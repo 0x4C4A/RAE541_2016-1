@@ -1,0 +1,300 @@
+<html>
+
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-beta1/jquery.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.6/lumen/bootstrap.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha/css/bootstrap.css">
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha/js/bootstrap.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.5.5/angular.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/0.9.7/joint.webpack-bundle.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jointjs/0.9.7/joint.css">
+<style>
+  .spacer{ height:20px; }
+  .coderDiagram{ }
+  .buttonRow{
+    min-height:44px;
+    padding-top:1px;
+  }
+  .switchLabel{ margin-left:10px; }
+
+  #stateGraph{
+    overflow:auto;
+    min-height:450px;
+    min-width:450px;
+  }
+  /* joint.js */
+  .link-tools .tool-remove { display: none }
+  .link-tools .tool-options { display: none }
+  .link .marker-arrowheads { display: none; }
+
+</style>
+<head>
+<script>
+  var app = angular.module('crypt', []);
+
+
+  app.filter('binary', function(){
+    return function(number, outputLength){
+      var number = parseInt(number);
+      var output = number.toString(2);
+      while(output.length < outputLength)
+        output = "0" + output;
+      return output;
+    }
+  })
+
+  app.controller('ctrl', function($scope) {
+    $scope.onlyBinary = /^[01]+$/;
+    $scope.switches = {
+      A : false,
+      B : false,
+      C : false,
+      D : false,
+      E : false,
+      F : false,
+      G : false,
+      H : false,
+      I : false,
+      J : false,
+      K : false,
+      L : false
+    }
+    $scope.states = {};
+    $scope.outputSignal = null;
+    $scope.select = function(select){
+      if(select == "all")       select = true;
+      else if(select == "none") select = false;
+      else                      console.err("Invalid <select> value!");
+      $.each($scope.switches, function(key, val){
+        $scope.switches[key] = select;
+      });
+    };
+
+    function calculateOutput(state){
+      var stateBit = [];
+      for (var i = 0; i<4; i++)
+        stateBit[i] = state & (1<<i);
+
+      var i1 = (stateBit[0] && $scope.switches.A) +
+               (stateBit[1] && $scope.switches.B) +
+               (stateBit[2] && $scope.switches.C) +
+               (stateBit[3] && $scope.switches.D);
+      var i2 = (stateBit[0] && $scope.switches.E) +
+               (stateBit[1] && $scope.switches.F) +
+               (stateBit[2] && $scope.switches.G) +
+               (stateBit[3] && $scope.switches.H);
+      var i3 = (stateBit[0] && $scope.switches.I) +
+               (stateBit[1] && $scope.switches.J) +
+               (stateBit[2] && $scope.switches.K) +
+               (stateBit[3] && $scope.switches.L);
+      i1 &= 0x01;
+      i2 &= 0x01;
+      i3 &= 0x01;
+      return i1 | (i2 << 1) | (i3 << 2);
+    }
+
+    $scope.$watch('switches', function(){
+      for(var state=0; state<16; state++){
+        var output = calculateOutput(state);
+        $scope.states[state] = output;
+        sm_link_names[state] = ('000'+output.toString(2)).substr(-3);
+      }
+      generateStateMachine();
+    }, true);
+
+
+
+    $scope.$watch('[switches, inputSignal]', function(){
+      $scope.outputSignal = null;
+      var input = $scope.inputSignal;
+      if(input === undefined || !input.length)
+        return;
+      $scope.outputSignal = {};
+      var bits = input.length - 1;
+      input = parseInt(input, 2);
+      var state = 0;
+      for(var bit=0; bit<=bits; bit++){
+        state <<= 1;
+        state |= (input & (1<<bit)) ? 1 : 0;
+        state &= 0x0F; // Truncate to 4 bits
+        $scope.outputSignal[bit] = {
+          state  : state,
+          output : calculateOutput(state),
+        }
+      }
+    }, true);
+  });
+
+
+  // State machine stuff
+  var graph;
+  var paper;
+  var sm_links = [];
+  var sm_link_names = [];
+
+  function state(x, y, label) {
+    var cell = new joint.shapes.fsa.State({
+        position: { x: x, y: y },
+        size: { width: 40, height: 40 },
+        attrs: {
+            text : { text: label, fill: '#000000', 'font-weight': 'normal' },
+            'circle': {
+                fill: '#f6f6f6',
+                stroke: '#000000',
+                'stroke-width': 2
+            }
+        }
+    });
+    graph.addCell(cell);
+    return cell;
+  }
+
+  function link(source, target, label, vertices) {
+      var cell = new joint.shapes.fsa.Arrow({
+          source: { id: source.id },
+          target: { id: target.id },
+          labels: [{ position: 0.5, attrs: { text: { text: label || '', 'font-weight': 'bold' } } }],
+          vertices: vertices || []
+      });
+      graph.addCell(cell);
+      return cell;
+  }
+
+  function generateStateMachine(){
+    if(!graph)
+      return;
+
+    graph.clear();
+
+    var states = []
+    states[0b000] = state(50, 50, '000');
+    states[0b001] = state(150, 200, '001');
+    states[0b010] = state(250, 300, '011');
+    states[0b011] = state(250, 100, '010');
+    states[0b100] = state(350,  50, '100');
+    states[0b101] = state(350, 150, '101');
+    states[0b110] = state(350, 250, '110');
+    states[0b111] = state(350, 350, '111');
+
+    sm_links[0b0000] = link(states[0b000], states[0b000], '0/'+sm_link_names[0b0000], [{x:25,y:25+20},{x:25,y:75+20}]);
+    sm_links[0b0001] = link(states[0b000], states[0b001], '1/'+sm_link_names[0b0001]);
+    sm_links[0b0010] = link(states[0b001], states[0b011], '0/'+sm_link_names[0b0010]);
+    sm_links[0b0011] = link(states[0b001], states[0b010], '1/'+sm_link_names[0b0011]);
+    sm_links[0b0100] = link(states[0b011], states[0b100], '0/'+sm_link_names[0b0100]);
+    sm_links[0b0101] = link(states[0b011], states[0b101], '1/'+sm_link_names[0b0101]);
+    sm_links[0b0110] = link(states[0b010], states[0b110], '0/'+sm_link_names[0b0110]);
+    sm_links[0b0111] = link(states[0b010], states[0b111], '1/'+sm_link_names[0b0111]);
+    sm_links[0b1000] = link(states[0b100], states[0b000], '0/'+sm_link_names[0b1000]);
+    sm_links[0b1001] = link(states[0b100], states[0b001], '1/'+sm_link_names[0b1001], [{x:250, y:100}]);
+    sm_links[0b1010] = link(states[0b101], states[0b011], '0/'+sm_link_names[0b1010], [{x:290, y:170}]);
+    sm_links[0b1011] = link(states[0b101], states[0b010], '1/'+sm_link_names[0b1011]);
+    sm_links[0b1100] = link(states[0b110], states[0b100], '0/'+sm_link_names[0b1100], [{x:425,y:170}]);
+    sm_links[0b1101] = link(states[0b110], states[0b101], '1/'+sm_link_names[0b1101]);
+    sm_links[0b1110] = link(states[0b111], states[0b110], '0/'+sm_link_names[0b1110]);
+    sm_links[0b1111] = link(states[0b111], states[0b111], '1/'+sm_link_names[0b1111], [{x:400,y:420},{x:420,y:400}]);
+  }
+
+  $(document).ready(function(){
+    // Graph stuff
+    graph = new joint.dia.Graph();
+
+    paper = new joint.dia.Paper({
+      el: $('#stateGraph'),
+      width: 450,
+      height: 450,
+      gridSize: 1,
+      model: graph,
+      interactive: false
+    });
+    paper.$el.css('pointer-events', 'none');
+  });
+
+</script>
+
+
+</head>
+
+<body ng-app="crypt" ng-controller="ctrl" class="container">
+  <div class="spacer"></div>
+  <div class="col-sm-12">
+    <div class="panel panel-default">
+      <div class="panel-heading text-center">
+        <h5>Define coder structure here</h5>
+      </div>
+      <div class="panel-body text-center">
+        <div class="row" >
+          <label ng-repeat="(key, val) in switches" class="switchLabel">
+            {{key}} <input type="checkbox" ng-model="switches[key]">
+          </label>
+        </div>
+        <div class="row buttonRow">
+          <button class="btn btn-default" ng-click="select('all')" >All </button>
+          <button class="btn btn-default" ng-click="select('none')">None</button>
+        </div>
+        <div class="spacer"></div>
+        <!-- Ungodly huge SVG -->
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="475px" height="298px" version="1.1" class="coderDiagram"> <g transform="translate(0.5,0.5)"> <g ng-show="switches.B || switches.F || switches.J || switches.C || switches.G || switches.K || switches.D || switches.H || switches.L"> <path d="M 107.05 150.1 L 140.68 150.1" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 145.93 150.1 L 138.93 153.6 L 140.68 150.1 L 138.93 146.6 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <rect x="67" y="130" width="40" height="40" fill="#ffffff" stroke="#000000" pointer-events="none"/> <g transform="translate(78.5,143.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 17px; white-space: nowrap; word-wrap: normal; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;"><b>D1</b></div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <g ng-show="switches.C || switches.G || switches.K || switches.D || switches.H || switches.L"> <path d="M 187.05 150.1 L 220.68 150.1" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 225.93 150.1 L 218.93 153.6 L 220.68 150.1 L 218.93 146.6 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <rect x="147" y="130" width="40" height="40" fill="#ffffff" stroke="#000000" pointer-events="none"/> <g transform="translate(158.5,143.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 17px; white-space: nowrap; word-wrap: normal; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;"><b>D2</b></div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <g ng-show="switches.D || switches.H || switches.L"> <rect x="227" y="130" width="40" height="40" fill="#ffffff" stroke="#000000" pointer-events="none"/> <g transform="translate(238.5,143.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 17px; white-space: nowrap; word-wrap: normal; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;"><b>D3</b></div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <path d="M 7 150 L 60.68 150.09" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 65.93 150.09 L 58.92 153.58 L 60.68 150.09 L 58.94 146.58 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(9.5,120.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="19" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;"><b><font style="font-size: 18px">X</font></b><font style="font-size: 12px">i</font></div></div></foreignObject> <text x="8" y="16" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> <path d="M 411.81 45.81 L 432.29 45.81 L 425.92 46.14" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 431.17 46.26 L 424.09 49.6 L 425.92 46.14 L 424.25 42.6 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <ellipse cx="392" cy="46" rx="20" ry="20" fill="#ffffff" stroke="#000000" pointer-events="none"/> <path d="M 392 34 L 392 58" fill="#ffffff" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 380 46 L 404 46" fill="#ffffff" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g ng-show="switches.A || switches.E || switches.I"> <path d="M 47 150 L 47 116.37" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 47 111.12 L 50.5 118.12 L 47 116.37 L 43.5 118.12 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(37.5,92.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="18" height="14" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;"><font style="font-size: 14px">N1</font></div></div></foreignObject> <text x="9" y="13" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <g ng-show="switches.B || switches.F || switches.J"> <path d="M 127 150 L 127 116.37" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 127 111.12 L 130.5 118.12 L 127 116.37 L 123.5 118.12 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(117.5,91.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="19" height="16" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;"><font style="font-size: 15px">N2</font></div></div></foreignObject> <text x="10" y="14" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <g ng-show="switches.C || switches.G || switches.K"> <path d="M 207 150 L 207 116.37" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 207 111.12 L 210.5 118.12 L 207 116.37 L 203.5 118.12 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(197.5,92.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="18" height="14" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;"><font style="font-size: 14px">N3</font></div></div></foreignObject> <text x="9" y="13" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <g ng-show="switches.D || switches.H || switches.L"> <path d="M 267.05 150.1 L 287.05 150.1 Q 297.05 150.1 297.04 140.1 L 297.01 116.37" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 297 111.12 L 300.51 118.11 L 297.01 116.37 L 293.51 118.12 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(287.5,91.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="19" height="16" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;"><font style="font-size: 15px">N4</font></div></div></foreignObject> <text x="10" y="14" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> <g ng-show="switches.A"> <path d="M 351.81 15.81 L 351.81 20.81 Q 351.81 25.81 361.81 25.81 L 375.44 25.81" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 380.69 25.81 L 373.69 29.31 L 375.44 25.81 L 373.69 22.31 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(343.5,-0.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N1</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N1</text> </switch> </g> </g> <g ng-show="switches.B"> <path d="M 352 36 L 365.63 36" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 370.88 36 L 363.88 39.5 L 365.63 36 L 363.88 32.5 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(334.5,29.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N2</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N2</text> </switch> </g> </g> <g ng-show="switches.C"> <path d="M 352 56 L 365.63 56" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 370.88 56 L 363.88 59.5 L 365.63 56 L 363.88 52.5 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(334.5,49.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N3</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N3</text> </switch> </g> </g> <g ng-show="switches.D"> <path d="M 351.81 75.81 L 351.81 71.05 Q 351.81 66.29 361.81 66.29 L 375.92 66.29" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 381.17 66.29 L 374.17 69.79 L 375.92 66.29 L 374.17 62.79 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(344.5,80.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="14" height="11" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 11px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N4</div></div></foreignObject> <text x="7" y="11" fill="#000000" text-anchor="middle" font-size="11px" font-family="Helvetica">N4</text> </switch> </g> </g> <g transform="translate(433.5,38.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="24" height="22" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;"><font style="font-size: 18px">Y</font>i1 </div></div></foreignObject> <text x="12" y="17" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> <path d="M 411.81 151.05 L 425.92 151.05" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 431.17 151.05 L 424.17 154.55 L 425.92 151.05 L 424.17 147.55 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <ellipse cx="392" cy="151" rx="20" ry="20" fill="#ffffff" stroke="#000000" pointer-events="none"/> <path d="M 392 139 L 392 163" fill="#ffffff" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 380 151 L 404 151" fill="#ffffff" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g ng-show="switches.E"> <path d="M 352.29 121.05 L 352.29 126.05 Q 352.29 131.05 362.29 131.05 L 375.92 131.05" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path ng-show="switches.E" d="M 381.17 131.05 L 374.17 134.55 L 375.92 131.05 L 374.17 127.55 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(344.5,104.5)" ng-show="switches.E"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N1</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N1</text> </switch> </g> </g> <g ng-show="switches.F"> <path d="M 352 141 L 365.63 141" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 370.88 141 L 363.88 144.5 L 365.63 141 L 363.88 137.5 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(334.5,134.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N2</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N2</text> </switch> </g> </g> <g ng-show="switches.G"> <path d="M 352 161 L 365.63 161" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 370.88 161 L 363.88 164.5 L 365.63 161 L 363.88 157.5 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(334.5,154.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N3</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N3</text> </switch> </g> </g> <g ng-show="switches.H"> <path d="M 352.29 181.05 L 352.05 176.05 Q 351.81 171.05 361.81 171.05 L 375.92 171.05" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 381.17 171.05 L 374.17 174.55 L 375.92 171.05 L 374.17 167.55 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(344.5,185.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="14" height="11" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 11px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N4</div></div></foreignObject> <text x="7" y="11" fill="#000000" text-anchor="middle" font-size="11px" font-family="Helvetica">N4</text> </switch> </g> </g> <g transform="translate(433.5,143.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="24" height="22" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;"><font style="font-size: 18px">Y</font>i2 </div></div></foreignObject> <text x="12" y="17" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> <path d="M 411.81 250.1 L 425.92 250.1" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 431.17 250.1 L 424.17 253.6 L 425.92 250.1 L 424.17 246.6 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <ellipse cx="392" cy="250" rx="20" ry="20" fill="#ffffff" stroke="#000000" pointer-events="none"/> <path d="M 392 238 L 392 262" fill="#ffffff" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 380 250 L 404 250" fill="#ffffff" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g ng-show="switches.I"> <path d="M 352.29 220.1 L 352.29 225.1 Q 352.29 230.1 362.29 230.1 L 375.92 230.1" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 381.17 230.1 L 374.17 233.6 L 375.92 230.1 L 374.17 226.6 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(344.5,203.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N1</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N1</text> </switch> </g> </g> <g ng-show="switches.J"> <path d="M 352 240 L 365.63 240" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 370.88 240 L 363.88 243.5 L 365.63 240 L 363.88 236.5 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(334.5,233.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N2</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N2</text> </switch> </g> </g> <g ng-show="switches.K"> <path d="M 352 260 L 365.63 260" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 370.88 260 L 363.88 263.5 L 365.63 260 L 363.88 256.5 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(334.5,253.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="15" height="12" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N3</div></div></foreignObject> <text x="8" y="12" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">N3</text> </switch> </g> </g> <g ng-show="switches.L"> <path d="M 352.29 280.1 L 352.05 275.1 Q 351.81 270.1 361.81 270.1 L 375.92 270.1" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <path d="M 381.17 270.1 L 374.17 273.6 L 375.92 270.1 L 374.17 266.6 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="none"/> <g transform="translate(344.5,284.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="14" height="11" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 11px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap; text-align: center;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;background-color:#ffffff;">N4</div></div></foreignObject> <text x="7" y="11" fill="#000000" text-anchor="middle" font-size="11px" font-family="Helvetica">N4</text> </switch> </g> </g> <g transform="translate(433.5,242.5)"> <switch> <foreignObject style="overflow:visible;" pointer-events="all" width="24" height="22" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"> <div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; white-space: nowrap;"> <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;"><font style="font-size: 18px">Y</font>i3 </div></div></foreignObject> <text x="12" y="17" fill="#000000" text-anchor="middle" font-size="12px" font-family="Helvetica">[Not supported by viewer]</text> </switch> </g> </g> </svg>
+        <br/>
+        <span>Illustration indicating the signal flow.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-12">
+    <div class="panel panel-default">
+      <div class="panel-heading text-center">
+        <h5>All possible outputs (and states)</h5>
+      </div>
+      <div class="panel-body text-center">
+        <div class="col-md-3">
+          <ul>
+            <li>State: Output</li>
+            <li>N4321: Yi321</li>
+            <li ng-repeat="(state, output) in states">
+              {{state | binary : 4}}: {{output | binary : 3}}
+            </li>
+          </ul>
+        </div>
+        <div class="col-md-9">
+          <div id="stateGraph"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="panel panel-default">
+      <div class="panel-heading text-center">
+        <h5>Coded signal</h5>
+      </div>
+      <div class="panel-body text-center">
+        <div class="alert alert-danger" role="alert" ng-show="signalForm.signal.$invalid">
+          Invalid signal input! Binary only.
+        </div>
+        <div class="col-sm-12">
+          <form name="signalForm">
+            <label>Input binary signal to be coded here:
+              <div class="input-group">
+                <span class="input-group-addon">Last bit</span>
+                <input class="form-control" ng-model="inputSignal" ng-pattern="onlyBinary" name="signal">
+                <span class="input-group-addon">First bit</span>
+              </div>
+            </label>
+          </form>
+        </div>
+        <div class="spacer"></div>
+        <span ng-show="outputSignal">
+        Input signal length - {{inputSignal.length}} bit(s)<br/>
+        Output (top is first, bottom is last)<br/>
+        State : Output<br/>
+        N4321: Yi321
+        </span>
+        <span class="col-sm-12" ng-repeat="(bit, value) in outputSignal">
+          {{value.state | binary : 4}} : {{value.output | binary : 3}}
+        </span>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
