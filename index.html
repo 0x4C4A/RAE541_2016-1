@@ -5,6 +5,11 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha/css/bootstrap.css">
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha/js/bootstrap.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.5.5/angular.js"></script>
+<script type="text/javascript" src="js/nerdamer/nerdamer.core.js"></script>
+<script type="text/javascript" src="js/nerdamer/Algebra.js"></script>
+<script type="text/javascript" src="js/nerdamer/Calculus.js"></script>
+<script type="text/javascript" src="js/nerdamer/Special.js"></script>
+<script type="text/javascript" src="js/nerdamer/Solve.js"></script>
 <style>
   .spacer{ height:20px; }
   .coderDiagram{ }
@@ -200,6 +205,27 @@
             sum += distance($scope.states[i]);
         $scope.masonDistances[disp] = sum;
       }
+
+      var mapping = {
+        a : "(D^"+String($scope.masonDistances["L1"])+")",
+        b : "(D^"+String($scope.masonDistances["L2"])+")",
+        c : "(D^"+String($scope.masonDistances["L3"])+")",
+        d : "(D^"+String($scope.masonDistances["L4"])+")",
+        e : "(D^"+String($scope.masonDistances["L5"])+")",
+        f : "(D^"+String($scope.masonDistances["C1"])+")",
+        g : "(D^"+String($scope.masonDistances["C2"])+")",
+        h : "(D^"+String($scope.masonDistances["C3"])+")",
+        i : "(D^"+String($scope.masonDistances["C4"])+")",
+        j : "(D^"+String($scope.masonDistances["C5"])+")",
+        k : "(D^"+String($scope.masonDistances["C6"])+")",
+        l : "(D^"+String($scope.masonDistances["C7"])+")",
+        m : "(D^"+String($scope.masonDistances["C8"])+")",
+      }
+
+      var top = nerdamer("a*(1-(f+g)) + b + c*(1-f) + d*(1-j) + e*(1-(f+j)+f*j)",mapping,"expand").evaluate();
+      var bot = nerdamer("1-(f+g+h+i+j+k+l+m)+f*(h+i+j+k)+g*h-f*i*j", mapping,"expand").evaluate();
+
+      console.log(nerdamer("top/bot", {top:top, bot:bot}).evaluate().text());
     }
 
     $scope.showDecodeSignalEntry = function(signal, length){
